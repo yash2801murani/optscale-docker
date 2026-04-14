@@ -21,7 +21,9 @@ FROM source AS builder
 
 WORKDIR /usr/src/app
 
-RUN pnpm --dir server build && pnpm --dir ui build
+RUN pnpm run -r build && \
+    if [ -d ./build ] && [ ! -d ./ui/build ]; then mkdir -p ./ui && mv ./build ./ui/build; fi && \
+    if [ -d ./dist ] && [ ! -d ./server/dist ]; then mkdir -p ./server && mv ./dist ./server/dist; fi
 
 # Keep the workspace install from the build stage.
 # The production image copies the root node_modules so the server can resolve
