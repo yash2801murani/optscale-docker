@@ -123,6 +123,16 @@ NVMe SSD is recommended.
 
 _The current installation process should also work on Ubuntu 22.04_
 
+## Local VM Setup for Docker Compose
+
+For Phase 1 local development and smoke testing, we now use a Docker Compose stack on a GCP VM instead of the legacy `runkube.py` flow.
+
+- Start here: [docs/setup-guide.md](/Users/dc/Documents/New project/docs/setup-guide.md)
+- Architecture flow: [docs/local-compose-architecture-explained.md](/Users/dc/Documents/New project/docs/local-compose-architecture-explained.md)
+- Visual workflow: [docs/local-compose-workflow-diagram.md](/Users/dc/Documents/New project/docs/local-compose-workflow-diagram.md)
+
+This path provisions a new VM, installs Docker and Compose, configures SSH access for GitHub, clones the repository, and brings the stack up with `make up`.
+
 #### Updating old installation
 please follow [this document](documentation/update_to_24.04.md) to upgrade your existing installation on Ubuntu 20.04.
 

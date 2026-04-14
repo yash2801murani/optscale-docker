@@ -22,14 +22,10 @@ FROM source AS builder
 WORKDIR /usr/src/app
 
 RUN pnpm run -r build
-  
-# Prepare production dependencies for the server
-RUN pnpm deploy --filter=server --prod ./prod/server && \
-    ./prod/server/scripts/prune_node_modules.sh
 
-# Remove UI node_modules to save space
-# The UI will be served statically
-RUN rm -rf ./ui/node_modules
+# Keep the workspace install from the build stage.
+# The production image copies the root node_modules so the server can resolve
+# workspace and runtime dependencies without relying on pnpm deploy semantics.
 
 # --- Production Stage ---
 FROM base AS production
@@ -37,8 +33,8 @@ FROM base AS production
 WORKDIR /usr/src/app
 
 # server
-COPY --from=builder /usr/src/app/prod/server/dist ./server/dist
-COPY --from=builder /usr/src/app/prod/server/node_modules ./server/node_modules
+COPY --from=builder /usr/src/app/server/dist ./server/dist
+COPY --from=builder /usr/src/app/node_modules ./node_modules
 
 # ui
 COPY --from=builder /usr/src/app/ui/build ./ui/build
