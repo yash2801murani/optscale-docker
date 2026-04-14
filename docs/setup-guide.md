@@ -1,43 +1,131 @@
 # OptScale Local VM Setup Guide
 
-This guide explains how to provision a Google Cloud VM, install Docker, configure SSH access to GitHub, clone the OptScale repository, and bring up the local Docker Compose stack.
+This guide explains how to provision a VM (on any supported cloud or bare metal), install Docker, configure SSH access to GitHub, clone the OptScale repository, and bring up the local Docker Compose stack.
+
+---
 
 ## Prerequisites & Dependencies
 
 Before starting, make sure you have the following:
 
-- A Google Cloud project with billing enabled
-- Permission to create VM instances in that project
-- The `gcloud` CLI installed locally and authenticated
+- A provisioned VM running **Debian 12** (or compatible Linux distro)
+- SSH access to the VM from your local machine
 - Access to the target GitHub repository:
   - `git@github.com:yash2801murani/optscale-docker.git`
 - The SSH private key file:
   - `~/.ssh/yash_murani_id`
 - The matching public key already added to the `yash2801murani` GitHub account
-- A local machine with internet access
 - Enough disk space on the VM to build Docker images
-  - Recommended: at least `50GB`
+  - Recommended: at least **50 GB**
 - A machine type with enough CPU and memory for the stack
-  - Recommended: `e2-standard-8` or larger
+  - Recommended: **8 vCPUs / 32 GB RAM** or larger
+
+---
 
 ## What This Setup Does
 
-This process creates a fresh Google Cloud VM and prepares it to run the OptScale platform as a local Docker Compose stack.
+This process takes a freshly provisioned VM and prepares it to run the OptScale platform as a local Docker Compose stack.
 
 The flow is:
 
-1. Create a VM on GCP
-2. Install Docker and Docker Compose
-3. Configure GitHub SSH access
-4. Clone the repository
-5. Build the images locally
-6. Start the stack with Docker Compose
+1. **Provision a VM** (cloud-specific — pick your platform)
+2. **Copy the SSH key** to the VM
+3. Install Docker and Docker Compose
+4. Configure GitHub SSH access
+5. Clone the repository
+6. Build the images locally
+7. Start the stack with Docker Compose
 
-## Step-by-Step Guide
+---
 
-### 1. Set the environment variables
+## Phase 1 — Cloud VM Provisioning
 
-These variables make the commands reusable and reduce mistakes.
+Pick the section that matches your cloud provider. Each section covers creating the VM and copying the SSH key onto it. Once complete, skip to **Phase 2 — Common Setup**.
+
+---
+
+### Option A — AWS EC2
+
+#### 1. Set environment variables
+
+```bash
+export AWS_REGION="us-east-1"
+export INSTANCE_TYPE="m5.2xlarge"
+export KEY_NAME="your-ec2-keypair"
+export AMI_ID="ami-0a0e5d9c7acc336f1"   # Debian 12 in us-east-1; adjust per region
+export SECURITY_GROUP="optscale-dev-sg"
+export DISK_SIZE=50
+export LOCAL_KEY="$HOME/.ssh/yash_murani_id"
+```
+
+#### 2. Create a security group
+
+```bash
+aws ec2 create-security-group \
+  --group-name "$SECURITY_GROUP" \
+  --description "OptScale dev VM"
+
+aws ec2 authorize-security-group-ingress \
+  --group-name "$SECURITY_GROUP" \
+  --protocol tcp --port 22 --cidr 0.0.0.0/0
+
+aws ec2 authorize-security-group-ingress \
+  --group-name "$SECURITY_GROUP" \
+  --protocol tcp --port 80 --cidr 0.0.0.0/0
+
+aws ec2 authorize-security-group-ingress \
+  --group-name "$SECURITY_GROUP" \
+  --protocol tcp --port 443 --cidr 0.0.0.0/0
+```
+
+#### 3. Launch the instance
+
+```bash
+INSTANCE_ID=$(aws ec2 run-instances \
+  --image-id "$AMI_ID" \
+  --instance-type "$INSTANCE_TYPE" \
+  --key-name "$KEY_NAME" \
+  --security-groups "$SECURITY_GROUP" \
+  --block-device-mappings "DeviceName=/dev/xvda,Ebs={VolumeSize=$DISK_SIZE,VolumeType=gp3}" \
+  --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=optscale-local-vm}]" \
+  --query 'Instances[0].InstanceId' \
+  --output text)
+
+echo "Instance ID: $INSTANCE_ID"
+```
+
+#### 4. Wait for the instance and get the public IP
+
+```bash
+aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
+
+EC2_IP=$(aws ec2 describe-instances \
+  --instance-ids "$INSTANCE_ID" \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' \
+  --output text)
+
+echo "VM IP: $EC2_IP"
+```
+
+#### 5. Copy the SSH key to the VM
+
+```bash
+scp -i ~/.ssh/"$KEY_NAME".pem "$LOCAL_KEY" admin@"$EC2_IP":~/.ssh/yash_murani_id
+```
+
+#### 6. SSH into the VM
+
+```bash
+ssh -i ~/.ssh/"$KEY_NAME".pem admin@"$EC2_IP"
+```
+
+*You are now on the VM. Proceed to Phase 2 — Common Setup.*
+
+---
+
+### Option B — Google Cloud (GCE)
+
+#### 1. Set environment variables
 
 ```bash
 export PROJECT_ID="project-dd78babb-fa69-4445-a5b"
@@ -47,13 +135,10 @@ export MACHINE_TYPE="e2-standard-8"
 export DISK_SIZE="50GB"
 export IMAGE_FAMILY="debian-12"
 export IMAGE_PROJECT="debian-cloud"
-export REPO_SSH="git@github.com:yash2801murani/optscale-docker.git"
 export LOCAL_KEY="$HOME/.ssh/yash_murani_id"
 ```
 
-### 2. Create the VM
-
-This command provisions a new GCP VM with enough resources for the full Dockerized stack.
+#### 2. Create the VM
 
 ```bash
 gcloud config set project "$PROJECT_ID"
@@ -69,17 +154,7 @@ gcloud compute instances create "$INSTANCE_NAME" \
   --tags "optscale-dev"
 ```
 
-What this does:
-
-- `gcloud config set project` selects the active GCP project
-- `compute instances create` creates the VM
-- `machine-type` selects the CPU and memory class
-- `boot-disk-size` gives enough disk for Docker images and build layers
-- `tags` allow firewall rules to target the VM later
-
-### 3. Open HTTP/HTTPS if needed
-
-If you want to access the UI or Nginx gateway from your browser, open ports `80` and `443`.
+#### 3. Open HTTP/HTTPS (optional)
 
 ```bash
 gcloud compute firewall-rules create allow-optscale-http \
@@ -91,56 +166,7 @@ gcloud compute firewall-rules create allow-optscale-http \
   --priority 1000
 ```
 
-What this does:
-
-- Creates a firewall rule for web traffic
-- Applies only to VMs with the `optscale-dev` tag
-- Allows browser access to the gateway service
-
-### 4. Install Docker and Docker Compose
-
-SSH into the VM and install the runtime dependencies.
-
-```bash
-gcloud compute ssh "$INSTANCE_NAME" --zone "$ZONE" --project "$PROJECT_ID" --command "$(cat <<'EOF'
-set -euo pipefail
-
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg lsb-release git openssh-client
-
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-sudo systemctl enable docker
-sudo systemctl restart docker
-sudo usermod -aG docker "$USER"
-
-docker --version
-docker compose version
-EOF
-)"
-```
-
-What this does:
-
-- Installs the packages needed for Docker and Git
-- Adds Docker’s official repository
-- Installs Docker Engine and the Compose plugin
-- Starts Docker and enables it on boot
-- Adds the current user to the `docker` group
-
-### 5. Copy the SSH key to the VM
-
-The VM needs SSH access to GitHub so it can clone the private repository.
+#### 4. Copy the SSH key to the VM
 
 ```bash
 gcloud compute scp "$LOCAL_KEY" "$INSTANCE_NAME:~/.ssh/yash_murani_id" \
@@ -149,24 +175,88 @@ gcloud compute scp "$LOCAL_KEY" "$INSTANCE_NAME:~/.ssh/yash_murani_id" \
   --tunnel-through-iap
 ```
 
-What this does:
-
-- Copies the private key file to the VM
-- Uses IAP tunneling for a secure transfer
-- Places the key in the VM user’s SSH directory
-
-Important note:
-
-- This works, but it is not the most secure long-term pattern
-- A better pattern is SSH agent forwarding or a deploy key
-- If you use this approach, delete the key from the VM after setup
-
-### 6. Configure SSH on the VM
-
-Set the correct permissions and register the key for GitHub access.
+#### 5. SSH into the VM
 
 ```bash
-gcloud compute ssh "$INSTANCE_NAME" --zone "$ZONE" --project "$PROJECT_ID" --command "$(cat <<'EOF'
+gcloud compute ssh "$INSTANCE_NAME" --zone "$ZONE" --project "$PROJECT_ID"
+```
+
+*You are now on the VM. Proceed to Phase 2 — Common Setup.*
+
+---
+
+### Option C — Bare-Metal / Pre-Existing Debian VM
+
+If you already have a Debian 12 VM (or any compatible machine) with SSH access, just copy the key and connect.
+
+#### 1. Set environment variables
+
+```bash
+export VM_IP="<your-vm-ip>"
+export VM_USER="<your-ssh-user>"
+export LOCAL_KEY="$HOME/.ssh/yash_murani_id"
+```
+
+#### 2. Copy the SSH key to the VM
+
+```bash
+scp "$LOCAL_KEY" "$VM_USER@$VM_IP":~/.ssh/yash_murani_id
+```
+
+#### 3. SSH into the VM
+
+```bash
+ssh "$VM_USER@$VM_IP"
+```
+
+*You are now on the VM. Proceed to Phase 2 — Common Setup.*
+
+---
+
+## Phase 2 — Common Setup
+
+Everything below runs on the VM. It does not matter which cloud you used — the steps are identical.
+
+#### 1. Install Docker and Docker Compose
+
+```bash
+set -euo pipefail
+
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg lsb-release git openssh-client
+
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL [https://download.docker.com/linux/debian/gpg](https://download.docker.com/linux/debian/gpg) \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  [https://download.docker.com/linux/debian](https://download.docker.com/linux/debian) \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+
+sudo systemctl enable docker
+sudo systemctl restart docker
+sudo usermod -aG docker "$USER"
+```
+
+> **Note:** Log out and back in (or run `newgrp docker`) so the group change takes effect.
+
+**What this does:**
+- Installs the packages needed for Docker and Git
+- Adds Docker's official repository
+- Installs Docker Engine and the Compose plugin
+- Starts Docker and enables it on boot
+- Adds the current user to the `docker` group
+
+#### 2. Configure SSH for GitHub
+
+```bash
 set -euo pipefail
 
 mkdir -p ~/.ssh
@@ -187,24 +277,17 @@ ssh-keyscan github.com >> ~/.ssh/known_hosts
 chmod 644 ~/.ssh/known_hosts
 
 ssh -T git@github.com || true
-EOF
-)"
 ```
 
-What this does:
-
-- Creates the `.ssh` directory if it does not exist
-- Restricts the key file to the owner only
+**What this does:**
+- Sets correct permissions on the key file
 - Tells SSH to use the correct key for GitHub
-- Trusts GitHub’s host key automatically the first time
+- Trusts GitHub's host key automatically the first time
 - Tests authentication against GitHub
 
-### 7. Clone the repository
-
-Now that the VM can authenticate with GitHub, clone the repo.
+#### 3. Clone the repository
 
 ```bash
-gcloud compute ssh "$INSTANCE_NAME" --zone "$ZONE" --project "$PROJECT_ID" --command "$(cat <<'EOF'
 set -euo pipefail
 
 mkdir -p ~/work
@@ -216,22 +299,16 @@ fi
 
 cd optscale-docker
 git status
-EOF
-)"
 ```
 
-What this does:
-
+**What this does:**
 - Creates a working directory
 - Clones the repository only if it is not already present
-- Moves into the repo so the next commands can build and run it
+- Confirms the repo is clean and ready
 
-### 8. Prepare the environment file
-
-If the repository contains `.env.example`, copy it to `.env`.
+#### 4. Prepare the environment file
 
 ```bash
-gcloud compute ssh "$INSTANCE_NAME" --zone "$ZONE" --project "$PROJECT_ID" --command "$(cat <<'EOF'
 set -euo pipefail
 
 cd ~/work/optscale-docker
@@ -239,101 +316,74 @@ cd ~/work/optscale-docker
 if [ ! -f .env ] && [ -f .env.example ]; then
   cp .env.example .env
 fi
-EOF
-)"
 ```
 
-What this does:
-
-- Creates the local environment file used by Docker Compose
+**What this does:**
+- Creates the `.env` file used by Docker Compose
 - Preserves sane defaults for local development
 
-### 9. Build and start the stack
-
-Use the repository automation to build images and launch the stack.
+#### 5. Build and start the stack
 
 ```bash
-gcloud compute ssh "$INSTANCE_NAME" --zone "$ZONE" --project "$PROJECT_ID" --command "$(cat <<'EOF'
 set -euo pipefail
 
 cd ~/work/optscale-docker
 
 make build
 make up
-EOF
-)"
 ```
 
-What this does:
-
+**What this does:**
 - Builds the Docker images from the local Dockerfiles
 - Starts the complete stack in detached mode
 - Brings up the databases, backend services, frontend, and gateway
 
-## Verification Steps
+---
 
-### 1. Verify Docker is installed
+## Verification
 
-Run this on the VM:
+#### 1. Docker is installed
 
 ```bash
 docker --version
 docker compose version
 ```
+*Both commands should print version information with no permission errors.*
 
-Expected result:
-
-- Both commands print version information
-- No permission errors should appear
-
-### 2. Verify GitHub SSH access
-
-Run this on the VM:
+#### 2. GitHub SSH access works
 
 ```bash
 ssh -T git@github.com
 ```
+*GitHub should confirm the authenticated account.*
 
-Expected result:
-
-- GitHub should confirm the authenticated account
-- The account should be the one that owns the repo
-
-### 3. Verify the containers are running
-
-Run this inside the repository directory on the VM:
+#### 3. Containers are running
 
 ```bash
 cd ~/work/optscale-docker
 docker compose ps
 ```
+*Core services should show `Up`. Database containers should be `healthy`. `nginx` and `ngui` should be running if the full stack is up.*
 
-Expected result:
+#### 4. UI is accessible
 
-- Core services show `Up`
-- The database containers should be healthy
-- `nginx` and `ngui` should be running if the full stack is up
+Open the VM's external IP in a browser:
 
-### 4. Verify the UI
-
-If port `80` is exposed, open the VM external IP in a browser.
-
-```bash
+```text
 http://<VM_EXTERNAL_IP>/
 ```
 
-You can find the external IP with:
+How to find the IP depends on your cloud:
 
-```bash
-gcloud compute instances describe optscale-local-vm \
-  --project project-dd78babb-fa69-4445-a5b \
-  --zone us-central1-f \
-  --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
-```
+| Cloud | Command |
+| :--- | :--- |
+| **AWS** | `aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].PublicIpAddress' --output text` |
+| **GCP** | `gcloud compute instances describe optscale-local-vm --zone us-central1-f --format='get(networkInterfaces[0].accessConfigs[0].natIP)'` |
+| **Bare-metal** | Use the IP you already have |
 
-### 5. Verify logs
+#### 5. Logs
 
-If something is not starting, inspect the service logs.
+If something is not starting, inspect the service logs:
 
 ```bash
 cd ~/work/optscale-docker
@@ -341,28 +391,31 @@ docker compose logs --tail=200
 docker compose logs --tail=200 nginx ngui restapi auth
 ```
 
-What to look for:
-
+**What to look for:**
 - Database readiness failures
 - Missing environment variables
 - SSH or Git clone issues
 - Backend service startup errors
 
+---
+
 ## Recommended Cleanup
 
-If you copied the private SSH key to the VM, remove it after setup.
+If you copied the private SSH key to the VM, remove it after setup:
 
 ```bash
 rm -f ~/.ssh/yash_murani_id
 ```
 
-You should keep the private key only on trusted machines when possible.
+*Keep the private key only on trusted machines when possible.*
+
+---
 
 ## Summary
 
 After completing these steps, you will have:
 
-- A new GCP VM sized for the OptScale stack
+- A VM sized for the OptScale stack (on any supported cloud or bare metal)
 - Docker and Docker Compose installed
 - GitHub SSH authentication configured
 - The repository cloned on the VM
