@@ -44,6 +44,8 @@ rest_api/rest_api_server/tests/binaries/
 
 # Large JSON dumps
 *.json
+!ngui/*.json
+!ngui/**/*.json
 
 # OS / misc
 .DS_Store
