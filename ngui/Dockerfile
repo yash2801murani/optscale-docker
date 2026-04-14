@@ -12,7 +12,10 @@ FROM base AS source
 
 WORKDIR /usr/src/app
 
-COPY ngui/ .
+COPY ngui/package.json ngui/pnpm-lock.yaml ngui/pnpm-workspace.yaml ngui/.npmrc ./
+COPY ngui/server/package.json ./server/package.json
+COPY ngui/ui/package.json ./ui/package.json
+COPY ngui/ ./
 
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
