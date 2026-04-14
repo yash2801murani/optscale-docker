@@ -1,0 +1,11 @@
+[REPORTS]
+reports=no
+
+[MESSAGES CONTROL]
+disable=R, missing-module-docstring, missing-class-docstring,
+    missing-function-docstring
+
+[BASIC]
+good-names=i, db, id
+generated-members=deleted, id, state, metadata, is_, op.create_table,
+    op.drop_table, op.alter_column

@@ -1,0 +1,668 @@
+name: optscale
+
+x-app-environment: &app-environment
+  HX_ETCD_HOST: etcd
+  HX_ETCD_PORT: ${ETCD_PORT}
+
+x-app-defaults: &app-defaults
+  env_file:
+    - .env
+  environment: *app-environment
+  restart: unless-stopped
+  networks:
+    - optscale
+
+services:
+  etcd:
+    <<: *app-defaults
+    image: quay.io/coreos/etcd:v3.5.16
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd
+      - --data-dir=/etcd-data
+      - --enable-v2=true
+      - --listen-client-urls=http://0.0.0.0:${ETCD_PORT}
+      - --advertise-client-urls=http://etcd:${ETCD_PORT}
+    expose:
+      - "${ETCD_PORT}"
+    volumes:
+      - etcd_data:/etcd-data
+    healthcheck:
+      test:
+        - CMD
+        - etcdctl
+        - --endpoints=http://127.0.0.1:${ETCD_PORT}
+        - endpoint
+        - health
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    environment:
+      <<: *app-environment
+      ETCDCTL_API: "3"
+
+  mariadb:
+    <<: *app-defaults
+    image: mariadb:11.4
+    environment:
+      <<: *app-environment
+      MARIADB_ROOT_PASSWORD: ${MARIADB_PASSWORD}
+      MARIADB_DATABASE: ${MARIADB_BOOTSTRAP_DB}
+      MARIADB_USER: ${MARIADB_APP_USER}
+      MARIADB_PASSWORD: ${MARIADB_APP_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max-connections=500
+    expose:
+      - "${MARIADB_PORT}"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mariadb-admin ping -h 127.0.0.1 -u"${MARIADB_USER}" -p"${MARIADB_PASSWORD}" --silent
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  mongo:
+    <<: *app-defaults
+    image: mongo:7.0
+    command:
+      - --bind_ip_all
+      - --wiredTigerCacheSizeGB
+      - "${MONGO_CACHE_SIZE_GB}"
+    environment:
+      <<: *app-environment
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    expose:
+      - "${MONGO_PORT}"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          mongosh --quiet
+          "mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@127.0.0.1:${MONGO_PORT}/admin?authSource=admin"
+          --eval "db.adminCommand('ping').ok"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  rabbitmq:
+    <<: *app-defaults
+    image: rabbitmq:4.1-management-alpine
+    environment:
+      <<: *app-environment
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE}
+    expose:
+      - "${RABBITMQ_PORT}"
+      - "${RABBITMQ_MANAGEMENT_PORT}"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  redis:
+    <<: *app-defaults
+    image: redis:7.4-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+    expose:
+      - "${REDIS_PORT}"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli ping | grep -q PONG
+      interval: 10s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  clickhouse:
+    <<: *app-defaults
+    image: clickhouse/clickhouse-server:24.8-alpine
+    environment:
+      <<: *app-environment
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    expose:
+      - "${CLICKHOUSE_TCP_PORT}"
+      - "${CLICKHOUSE_HTTP_PORT}"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- "http://127.0.0.1:${CLICKHOUSE_HTTP_PORT}/ping" | grep -q Ok.
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  influxdb:
+    <<: *app-defaults
+    image: influxdb:1.8-alpine
+    environment:
+      <<: *app-environment
+      INFLUXDB_DB: ${INFLUXDB_DB}
+      INFLUXDB_HTTP_AUTH_ENABLED: "false"
+    expose:
+      - "${INFLUXDB_PORT}"
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q --spider "http://127.0.0.1:${INFLUXDB_PORT}/ping"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  minio:
+    <<: *app-defaults
+    image: minio/minio:RELEASE.2025-02-03T21-03-04Z
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
+    environment:
+      <<: *app-environment
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    expose:
+      - "${MINIO_PORT}"
+      - "${MINIO_CONSOLE_PORT}"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS "http://127.0.0.1:${MINIO_PORT}/minio/health/live" >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  configurator:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: docker_images/configurator/Dockerfile
+    restart: "no"
+    volumes:
+      - ./docker/local/config.yaml:/config/config:ro
+    depends_on:
+      etcd:
+        condition: service_healthy
+      mariadb:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  auth:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: auth/Dockerfile
+    expose:
+      - "${AUTH_PORT}"
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      mariadb:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -f /tmp/i_am_ready
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  restapi:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: rest_api/Dockerfile
+    environment:
+      <<: *app-environment
+      REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+      FAKE_CAD_ENABLED: ${FAKE_CAD_ENABLED}
+      OTEL_ENABLED: ${OTEL_ENABLED}
+      OTEL_EXPORTER: ${OTEL_EXPORTER}
+      OTEL_SERVICE_NAME: restapi
+      OTEL_SERVICE_VERSION: ${RELEASE}
+      OTEL_PYTHON_LOG_CORRELATION: "true"
+    expose:
+      - "${RESTAPI_PORT}"
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      mariadb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -f /tmp/i_am_ready
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  keeper:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: keeper/Dockerfile
+    expose:
+      - "${KEEPER_PORT}"
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -f /tmp/i_am_ready
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  herald-api:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: herald/Dockerfile
+    environment:
+      <<: *app-environment
+      HERALD_SERVICE: api
+    expose:
+      - "${HERALD_PORT}"
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+
+  herald-engine:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: herald/Dockerfile
+    environment:
+      <<: *app-environment
+      HERALD_SERVICE: engine
+    volumes:
+      - herald_email_templates:/usr/src/app/herald/modules/email_generator/custom_templates
+      - herald_template_filters:/usr/src/app/herald/modules/email_generator/customer_filters
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+
+  katara:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: katara/katara_service/Dockerfile
+    environment:
+      <<: *app-environment
+      HX_KATARA_ROLE: api
+    expose:
+      - "${KATARA_PORT}"
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      restapi:
+        condition: service_started
+
+  katara-scheduler:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: katara/katara_service/Dockerfile
+    environment:
+      <<: *app-environment
+      HX_KATARA_ROLE: scheduler
+    depends_on:
+      katara:
+        condition: service_started
+      configurator:
+        condition: service_completed_successfully
+
+  katara-worker:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: katara/katara_worker/Dockerfile
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      restapi:
+        condition: service_started
+      minio:
+        condition: service_healthy
+
+  diworker:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: diworker/Dockerfile
+    environment:
+      <<: *app-environment
+      FAKE_CAD_ENABLED: ${FAKE_CAD_ENABLED}
+    volumes:
+      - diworker_reports:/src/reports
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      restapi:
+        condition: service_started
+
+  metroculus-api:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: metroculus/metroculus_api/Dockerfile
+    expose:
+      - "${METROCULUS_PORT}"
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+
+  metroculus-worker:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: metroculus/metroculus_worker/Dockerfile
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      restapi:
+        condition: service_started
+
+  metroculus-scheduler:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: metroculus/metroculus_scheduler/Dockerfile
+    restart: "no"
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      restapi:
+        condition: service_healthy
+
+  trapper-worker:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: trapper/trapper_worker/Dockerfile
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      restapi:
+        condition: service_started
+
+  trapper-scheduler:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: trapper/trapper_scheduler/Dockerfile
+    restart: "no"
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      restapi:
+        condition: service_healthy
+
+  bumiworker:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: bumiworker/Dockerfile
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      restapi:
+        condition: service_started
+      minio:
+        condition: service_healthy
+
+  bumischeduler:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: bumischeduler/Dockerfile
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      restapi:
+        condition: service_started
+
+  slacker:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: slacker/Dockerfile
+    expose:
+      - "${SLACKER_PORT}"
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      mariadb:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      restapi:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -f /tmp/i_am_ready
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  jira-bus:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: jira_bus/Dockerfile
+    expose:
+      - "${JIRA_BUS_PORT}"
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      etcd:
+        condition: service_healthy
+      mariadb:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      restapi:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -f /tmp/i_am_ready
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  ngui:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: ngui/Dockerfile
+    environment:
+      <<: *app-environment
+      AUTH_ENDPOINT: http://auth:${AUTH_PORT}
+      KEEPER_ENDPOINT: http://keeper:${KEEPER_PORT}
+      RESTAPI_ENDPOINT: http://restapi:${RESTAPI_PORT}
+      SLACKER_ENDPOINT: http://slacker:${SLACKER_PORT}
+      UI_BUILD_PATH: /usr/src/app/ui
+      PROXY_URL: http://nginx
+      PORT: ${NGUI_PORT}
+      VITE_BASE_URL: ""
+      VITE_PROXY: http://nginx
+      VITE_PORT: ${NGUI_PORT}
+      VITE_GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID}
+      VITE_MICROSOFT_OAUTH_CLIENT_ID: ${MICROSOFT_OAUTH_CLIENT_ID}
+      VITE_GOOGLE_MAP_API_KEY: ${VITE_GOOGLE_MAP_API_KEY}
+      VITE_GANALYTICS_ID: ${VITE_GANALYTICS_ID}
+      VITE_HOTJAR_ID: ${VITE_HOTJAR_ID}
+      VITE_ON_INITIALIZE_ORGANIZATION_SETUP_MODE: ${VITE_ON_INITIALIZE_ORGANIZATION_SETUP_MODE}
+      VITE_FINOPS_IN_PRACTICE_PORTAL_OVERVIEW: ${VITE_FINOPS_IN_PRACTICE_PORTAL_OVERVIEW}
+      VITE_BILLING_INTEGRATION: ${VITE_BILLING_INTEGRATION}
+      VITE_APP_THEME: ${VITE_APP_THEME}
+    expose:
+      - "${NGUI_PORT}"
+    depends_on:
+      auth:
+        condition: service_healthy
+      jira-bus:
+        condition: service_healthy
+      restapi:
+        condition: service_healthy
+      keeper:
+        condition: service_healthy
+      slacker:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    <<: *app-defaults
+    image: nginx:1.27-alpine
+    ports:
+      - "${NGINX_HTTP_PORT}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      ngui:
+        condition: service_started
+      auth:
+        condition: service_healthy
+      restapi:
+        condition: service_healthy
+      jira-bus:
+        condition: service_healthy
+
+networks:
+  optscale:
+    driver: bridge
+
+volumes:
+  etcd_data:
+  mariadb_data:
+  mongo_data:
+  rabbitmq_data:
+  redis_data:
+  clickhouse_data:
+  clickhouse_logs:
+  influxdb_data:
+  minio_data:
+  diworker_reports:
+  herald_email_templates:
+  herald_template_filters:

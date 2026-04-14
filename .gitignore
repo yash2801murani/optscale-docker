@@ -1,0 +1,51 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# User-specific stuff:
+.idea/
+.venv/
+venv/
+.vscode/
+.DS_Store
+.python-version
+optscale-deploy/overlay/*.yml
+!optscale-deploy/overlay/user_template.yml
+optscale-deploy/optscale/component_versions.yaml
+rest_api/.clickhouse
+**/.pytest_cache/
+**/.ruff_cache/
+# Build files
+**/build
+**/dist
+**/*egg-info/
+**/*.tar.gz
+
+# jira_ui
+jira_ui/*/.env
+jira_ui/*/node_modules
+jira_ui/*/build/
+
+# Vagrant
+optscale-deploy/.vagrant/
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Binaries
+*.tar.gz
+*.zip
+*.bin
+
+# Clickhouse test binaries
+rest_api/rest_api_server/tests/binaries/
+
+# Large JSON dumps
+*.json
+
+# OS / misc
+.DS_Store
+.env
+docker/local/config.yaml

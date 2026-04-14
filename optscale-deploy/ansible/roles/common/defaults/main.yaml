@@ -1,0 +1,64 @@
+---
+# latest tested with k8s
+kubernetes_version: "1.32"
+
+nerdctl_version: "1.7.6"
+
+buildkit_version: "0.16.0"
+
+logstash_host: 127.0.0.1
+
+tools_list:
+- htop
+- bmon
+- sysstat
+- vim
+- iotop
+- nmap
+- unzip
+- python3-dev
+- python3-venv
+- jq
+- moreutils
+- libsodium-dev
+- libssl-dev
+- gcc
+
+docker_package_names:
+- docker
+- docker.io
+- docker-engine
+- docker-ce
+
+kubernetes_packages:
+- kubectl
+- kubelet
+- kubeadm
+
+local_registry_port: 15000
+local_patch_port: 5000
+
+cluster_info_local_path: ../cluster_info.py
+
+tools_directory_path: /optscale/tools
+cluster_info_remote_path: "{{ tools_directory_path }}/cluster_info.py"
+tools_venv_path: "{{ tools_directory_path }}/venv_for_tools"
+remote_requirements_path: "{{ tools_directory_path }}/requirements.txt"
+
+etcd_restore_tools:
+  - restore_etcd.sh
+  - restore_editor.py
+
+open_docker_port: true
+log_to_elk: true
+syslog_rotation_size: 100M
+
+# the architecture returned by `uname -m` (which is the canonical way to get it and it's what
+# the `ansible_architecture` variable uses) can return either x86_64 and amd64 even though they
+# refer to the same CPU architecture (and same for the other aliases). However when we're installing
+# packages only amd64 and arm64 are valid, thus this mapping and the `os_arch` variable bellow
+os_arch_aliases:
+  x86_64: amd64
+  aarch64: arm64
+
+os_arch: "{{ os_arch_aliases.get(ansible_architecture, ansible_architecture) }}"

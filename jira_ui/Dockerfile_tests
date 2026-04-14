@@ -1,0 +1,8 @@
+ARG BUILDTAG=build
+FROM jira_ui:${BUILDTAG}
+
+# installing only dev dependencies for ui prettier and linter check
+WORKDIR "/usr/src/app/ui"
+USER root
+
+RUN npm ci --legacy-peer-deps --ignore-scripts -D

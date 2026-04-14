@@ -1,0 +1,8 @@
+ARG BUILDTAG=build
+FROM bumischeduler:${BUILDTAG}
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+COPY bumischeduler/pyproject.toml bumischeduler/uv.lock bumischeduler/.pylintrc ./bumischeduler/
+RUN uv --project bumischeduler sync --locked
+
+COPY bumischeduler/bumischeduler/tests bumischeduler/bumischeduler/tests

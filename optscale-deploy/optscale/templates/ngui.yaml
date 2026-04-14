@@ -1,0 +1,83 @@
+{{- $config := .Values.ngui -}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $config.service.name }}
+  labels:
+    app: {{ $config.name }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name }}
+spec:
+  type: {{ $config.service.type }}
+  ports:
+    - port: {{ $config.service.externalPort }}
+      targetPort: {{ $config.service.internalPort }}
+      protocol: TCP
+      name: {{ $config.service.name }}
+  selector:
+    app: {{ $config.name }}
+    release: {{ .Release.Name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $config.name }}
+  labels:
+    app: {{ $config.name }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ .Release.Name }}
+spec:
+  replicas: {{ $config.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ $config.name }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $config.name }}
+        release: {{ .Release.Name }}
+    spec:
+      initContainers:
+{{- if .Values.elk.enabled }}
+{{ include "wait_for_elk" . | indent 6 }}
+{{- end }}
+{{ include "wait_for_service" .Values.auth | indent 6 }}
+{{ include "wait_for_service" .Values.jira_bus | indent 6 }}
+{{ include "wait_for_service" .Values.rest_api | indent 6 }}
+{{ include "wait_for_service" .Values.keeper | indent 6 }}
+{{ include "wait_for_service" .Values.slacker | indent 6 }}
+{{ include "wait_for_service" .Values.redis | indent 6 }}
+      containers:
+      - name: {{ $config.name }}
+        image: "{{ $config.image.repository }}:{{ $config.image.tag }}"
+        imagePullPolicy: {{ $config.image.pullPolicy }}
+        env:
+        - name: IMAGE_ID
+          value: {{ $config.image.id }}
+        - name: BUILD_MODE
+          value: {{ $config.env.build_mode }}
+        - name: UI_BUILD_PATH
+          value: /usr/src/app/ui
+        - name: PROXY_URL
+          value: https://ngingress-nginx-ingress-controller:443
+        - name: VITE_GOOGLE_OAUTH_CLIENT_ID
+          value: {{ $config.env.google_oauth_client_id }}
+        - name: VITE_MICROSOFT_OAUTH_CLIENT_ID
+          value: {{ $config.env.microsoft_oauth_client_id }}
+        - name: VITE_GOOGLE_MAP_API_KEY
+          value: {{ $config.env.google_map_api_key }}
+        - name: VITE_GANALYTICS_ID
+          value: {{ $config.env.ganalytics_id }}
+        - name: VITE_HOTJAR_ID
+          value: {{ $config.env.hotjar_id | quote }}
+        - name: VITE_ON_INITIALIZE_ORGANIZATION_SETUP_MODE
+          value: {{ $config.env.on_initialize_organization_setup_mode }}
+        - name: VITE_FINOPS_IN_PRACTICE_PORTAL_OVERVIEW
+          value: {{ $config.env.finops_in_practice_portal_overview }}
+        - name: VITE_BILLING_INTEGRATION
+          value: {{ $config.env.billing_integration }}
+        - name: VITE_APP_THEME
+          value: {{ $config.env.app_theme }}
+{{ include "ready_probe" $config | indent 8 }}

@@ -1,0 +1,82 @@
+import re
+import os.path
+import yaml
+from apispec import APISpec, yaml_utils
+import auth.auth_server.server as server
+
+# Spec reference:
+# https://github.com/OAI/OpenAPI-Specification/blob/master/versions/2.0.md
+
+OPENAPI_SPEC = """
+swagger: '2.0'
+info:
+    description: >
+        OptScale Auth API. Call `POST` `/auth/v2/tokens` with
+         `{"email": "<email>", "password": "<password>"}` body to receive an
+         authorization token and use `Bearer <token>` string in `Authorization`
+          header to authorize.
+    title: Auth
+    version: 1.0.0
+securityDefinitions:
+    token:
+        in: header
+        name: 'Authorization'
+        type: apiKey
+    secret:
+        in: header
+        name: 'Secret'
+        type: apiKey
+"""
+
+
+def main():
+    settings = yaml.safe_load(OPENAPI_SPEC)
+    title = settings['info'].pop('title')
+    spec_version = settings['info'].pop('version')
+    openapi_version = settings.pop('swagger')
+    spec = APISpec(
+        title=title,
+        version=spec_version,
+        openapi_version=openapi_version,
+        plugins=(),
+        **settings
+    )
+    spec_advanced = APISpec(
+        title=title,
+        version=spec_version,
+        openapi_version=openapi_version,
+        plugins=(),
+        **settings
+    )
+
+    for urlspec in server.get_handlers(dict()):
+        path = re.sub(r"\(.*?<(.*?)>.*?\)", r"{\1}", urlspec[0])
+        operations = dict()
+        operations_advanced = dict()
+        for method_name in yaml_utils.PATH_KEYS:
+            method = getattr(urlspec[1], method_name)
+            operation_data = yaml_utils.load_yaml_from_docstring(
+                method.__doc__)
+            if operation_data:
+                hidden = operation_data.pop('x-hidden', False)
+                if not hidden:
+                    operations[method_name] = operation_data
+                operations_advanced[method_name] = operation_data
+        if len(operations) > 0:
+            spec.path(path=path, operations=operations)
+        if len(operations_advanced) > 0:
+            spec_advanced.path(path=path, operations=operations_advanced)
+        else:
+            print("Warning: docstrings for '" + urlspec[0] + "' are not found")
+
+    # Api spec files
+    with open(os.path.join(server.SWAGGER_PATH, "spec.yaml"), "w",
+              encoding='utf-8') as file:
+        file.write(spec.to_yaml())
+    with open(os.path.join(server.SWAGGER_PATH, "spec_advanced.yaml"), "w",
+              encoding='utf-8') as file:
+        file.write(spec_advanced.to_yaml())
+
+
+if __name__ == "__main__":
+    main()

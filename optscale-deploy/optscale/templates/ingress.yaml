@@ -1,0 +1,126 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/custom-http-errors: "503"
+    nginx.ingress.kubernetes.io/default-backend: {{.Values.error_pages.service.name}}
+    nginx.ingress.kubernetes.io/proxy-body-size: "512m"
+    nginx.ingress.kubernetes.io/connection-proxy-header: "keep-alive"
+    nginx.ingress.kubernetes.io/client-body-buffer-size:  "512m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    {{- if .Values.ssl.force_redirect }}
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    {{- end }}
+    {{- if .Values.ssl.cert_manager.enabled }}
+    cert-manager.io/{{ .Values.ssl.cert_manager.issuer_type }}: {{ .Values.ssl.cert_manager.issuer | quote }}
+    {{- end }}
+  name: optscale
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - backend:
+          service:
+            name: {{ .Values.auth.service.name }}
+            port:
+              number: {{ .Values.auth.service.externalPort }}
+        path: /auth
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.rest_api.service.name }}
+            port:
+              number: {{ .Values.rest_api.service.externalPort }}
+        path: /restapi
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.keeper.service.name }}
+            port:
+              number: {{ .Values.keeper.service.externalPort }}
+        path: /report
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.ngui.service.name }}
+            port:
+              number: {{ .Values.ngui.service.externalPort }}
+        path: /
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.herald.service.name }}
+            port:
+              number: {{ .Values.herald.service.externalPort }}
+        path: /herald
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.katara_service.service.name }}
+            port:
+              number: {{ .Values.katara_service.service.externalPort }}
+        path: /katara
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.insider_api.service.name }}
+            port:
+              number: {{ .Values.insider_api.service.externalPort }}
+        path: /insider
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.slacker.service.name }}
+            port:
+              number: {{ .Values.slacker.service.externalPort }}
+        path: /slacker
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.metroculus_api.service.name }}
+            port:
+              number: {{ .Values.metroculus_api.service.externalPort }}
+        path: /metroculus
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.jira_bus.service.name }}
+            port:
+              number: {{ .Values.jira_bus.service.externalPort }}
+        path: /jira_bus
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.jira_ui.service.name }}
+            port:
+              number: {{ .Values.jira_ui.service.externalPort }}
+        path: /jira_ui
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.diproxy.service.name }}
+            port:
+              number: {{ .Values.diproxy.service.externalPort }}
+        path: /storage
+        pathType: Prefix
+      - backend:
+          service:
+            name: {{ .Values.subspector.service.name }}
+            port:
+              number: {{ .Values.subspector.service.externalPort }}
+        path: /subspector
+        pathType: Prefix
+{{- if (and (.Values.public_ip) (.Values.ssl.cert_manager.enabled)) }}
+    host: {{ .Values.public_ip }}
+{{- end }}
+  tls:
+  - secretName: {{ .Values.ssl.certificate_name }}
+{{- if .Values.public_ip }}
+    hosts:
+    - {{ .Values.public_ip }}
+{{- end }}
