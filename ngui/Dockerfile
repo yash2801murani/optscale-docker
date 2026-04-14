@@ -37,9 +37,15 @@ FROM base AS production
 
 WORKDIR /usr/src/app
 
+# Copy workspace manifests so pnpm can materialize runtime dependencies
+COPY ngui/package.json ngui/pnpm-lock.yaml ngui/pnpm-workspace.yaml ngui/.npmrc ./
+COPY ngui/server/package.json ./server/package.json
+COPY ngui/ui/package.json ./ui/package.json
+
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
+
 # server
 COPY --from=builder /usr/src/app/server/dist ./server/dist
-COPY --from=builder /usr/src/app/node_modules ./node_modules
 
 # ui
 COPY --from=builder /usr/src/app/ui/build ./ui/build
