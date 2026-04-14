@@ -70,6 +70,9 @@ etcd:
   katara:
     host: "katara"
     port: "${KATARA_PORT}"
+  herald:
+    host: "herald-api"
+    port: "${HERALD_PORT}"
   authdb:
     host: "mariadb"
     user: "${MARIADB_USER}"
