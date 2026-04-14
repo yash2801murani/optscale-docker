@@ -210,7 +210,7 @@ services:
       dockerfile: docker_images/configurator/Dockerfile
     restart: "no"
     volumes:
-      - ./docker/local/config.yaml:/config/config:ro
+      - ./docker/local/config.yaml.tpl:/config/config.tpl:ro
     depends_on:
       etcd:
         condition: service_healthy
