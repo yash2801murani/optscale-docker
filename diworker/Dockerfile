@@ -1,6 +1,9 @@
 FROM python:3.12.11-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /src
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/src
 
 COPY optscale_client optscale_client
 COPY tools tools
@@ -10,7 +13,7 @@ COPY diworker/pyproject.toml diworker/pyproject.toml
 COPY diworker/uv.lock diworker/uv.lock
 COPY diworker/diworker diworker/diworker
 
-RUN uv --project diworker sync --locked --no-dev
+RUN uv --project diworker sync --locked --no-dev --no-install-project
 
 # used to store the report being processed. Automatically deleted
 VOLUME ["/src/reports"]

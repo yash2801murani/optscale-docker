@@ -3,6 +3,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 LABEL org.opencontainers.image.authors="Hystax"
 
 WORKDIR /usr/src/app/
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/usr/src/app
 
 COPY tools tools
 COPY optscale_client optscale_client
@@ -15,6 +18,6 @@ COPY katara/katara_worker/uv.lock ./
 COPY katara/katara_worker/reports_generators ./reports_generators
 COPY katara/katara_worker/*.py ./
 
-RUN uv --project katara/katara_worker sync --locked --no-dev
+RUN uv --project katara/katara_worker sync --locked --no-dev --no-install-project
 
 CMD ["uv", "run", "--project", "katara/katara_worker", "python", "-u","/usr/src/app/katara/katara_worker/main.py"]

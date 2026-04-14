@@ -1,6 +1,9 @@
 FROM python:3.12.11-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /src
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/src
 
 COPY tools tools
 COPY optscale_client optscale_client
@@ -18,7 +21,7 @@ COPY slacker/slacker_server/message_templates slacker/slacker_server/message_tem
 COPY slacker/slacker_server/handlers slacker/slacker_server/handlers
 COPY slacker/slacker_server/controllers slacker/slacker_server/controllers
 
-RUN uv --project slacker sync --locked --no-dev
+RUN uv --project slacker sync --locked --no-dev --no-install-project
 RUN uv --project slacker run python -u slacker/slacker_server/write_spec.py
 
 CMD ["uv", "run", "--project", "slacker", "python", "/src/slacker/slacker_server/server.py"]

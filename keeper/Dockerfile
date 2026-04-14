@@ -3,6 +3,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 LABEL org.opencontainers.image.authors="Hystax"
 
 WORKDIR /usr/src/app/
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/usr/src/app
 
 COPY keeper/pyproject.toml keeper/pyproject.toml
 COPY keeper/uv.lock keeper/uv.lock
@@ -10,7 +13,7 @@ COPY keeper/__init__.py keeper/__init__.py
 
 COPY tools tools
 COPY optscale_client optscale_client
-RUN uv --project keeper sync --locked --no-dev
+RUN uv --project keeper sync --locked --no-dev --no-install-project
 
 WORKDIR /usr/src/app/keeper/report_server
 COPY keeper/report_server/controllers ./controllers

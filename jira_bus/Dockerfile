@@ -1,6 +1,9 @@
 FROM python:3.12.11-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /usr/src/app/
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/usr/src/app
 
 COPY jira_bus/pyproject.toml jira_bus/pyproject.toml
 COPY jira_bus/uv.lock jira_bus/uv.lock
@@ -9,7 +12,7 @@ COPY jira_bus/__init__.py jira_bus/__init__.py
 COPY optscale_client optscale_client
 COPY tools tools
 
-RUN uv --project jira_bus sync --locked --no-dev
+RUN uv --project jira_bus sync --locked --no-dev --no-install-project
 
 WORKDIR /usr/src/app/jira_bus/jira_bus_server
 

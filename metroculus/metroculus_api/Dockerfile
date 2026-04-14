@@ -3,6 +3,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 LABEL org.opencontainers.image.authors="Hystax"
 
 WORKDIR /usr/src/app/
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/usr/src/app
 
 COPY tools tools
 COPY optscale_client optscale_client
@@ -15,7 +18,7 @@ COPY metroculus/metroculus_api/handlers metroculus/metroculus_api/handlers
 COPY metroculus/metroculus_api/swagger metroculus/metroculus_api/swagger
 COPY metroculus/metroculus_api/*.py metroculus/metroculus_api/
 
-RUN uv --project metroculus/metroculus_api sync --locked --no-dev
+RUN uv --project metroculus/metroculus_api sync --locked --no-dev --no-install-project
 RUN uv --project metroculus/metroculus_api run python -u metroculus/metroculus_api/write_spec.py
 
 CMD ["uv", "run", "--project", "metroculus/metroculus_api", "python", "-u","/usr/src/app/metroculus/metroculus_api/server.py"]

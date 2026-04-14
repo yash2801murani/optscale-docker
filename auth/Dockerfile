@@ -3,6 +3,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 LABEL org.opencontainers.image.authors="Hystax"
 
 WORKDIR /usr/src/app/
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/usr/src/app
 
 RUN apt-get update && apt-get install -y libsodium-dev \
     && apt-get autoremove -y \
@@ -26,7 +29,7 @@ COPY auth/auth_server/*.py ./auth/auth_server/
 COPY auth/auth_server/alembic.template auth/auth_server/alembic.template
 COPY auth/auth_server/swagger auth/auth_server/swagger
 
-RUN uv --project auth sync --locked --no-dev
+RUN uv --project auth sync --locked --no-dev --no-install-project
 RUN uv --project auth run python -u auth/auth_server/write_spec.py
 
 CMD ["uv", "--project", "auth", "run", "python", "-u", "/usr/src/app/auth/auth_server/server.py"]

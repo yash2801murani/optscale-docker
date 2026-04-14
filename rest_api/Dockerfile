@@ -2,6 +2,9 @@ FROM python:3.12.11-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /usr/src/app/
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/usr/src/app
 
 COPY tools tools
 COPY optscale_client optscale_client
@@ -21,7 +24,7 @@ COPY rest_api/rest_api_server/recommendation_cleanup_scripts rest_api/rest_api_s
 COPY rest_api/pyproject.toml rest_api/pyproject.toml
 COPY rest_api/uv.lock rest_api/uv.lock
 
-RUN uv --project rest_api sync --locked --no-dev
+RUN uv --project rest_api sync --locked --no-dev --no-install-project
 RUN uv --project rest_api run python -u rest_api/rest_api_server/write_spec.py
 
 CMD ["uv", "--project", "rest_api", "run", "python", "-u", "/usr/src/app/rest_api/rest_api_server/server.py"]
