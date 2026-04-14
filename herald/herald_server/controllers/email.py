@@ -2,6 +2,8 @@ import json
 import logging
 import re
 
+import etcd
+
 from herald.herald_server.controllers.base import BaseController
 from herald.herald_server.controllers.base_async import BaseAsyncControllerWrapper
 from herald.herald_server.utils import is_hystax_email
@@ -35,7 +37,10 @@ class EmailController(BaseController):
                     return None
             return t_value
 
-        template_filters = self._config.read_branch("/skip_email_filters")
+        try:
+            template_filters = self._config.read_branch("/skip_email_filters")
+        except etcd.EtcdKeyNotFound:
+            template_filters = {}
         if template_type in template_filters:
             for template_param, regex in template_filters[template_type].items():
                 value = _template_param_value(template_param)
